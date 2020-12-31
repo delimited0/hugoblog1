@@ -1,0 +1,5 @@
+options(blogdown.ext = '.Rmd', 
+        blogdown.author = 'Patrick Ding',
+        blogdown.subdir = 'post', 
+        blogdown.yaml.empty = TRUE)
+

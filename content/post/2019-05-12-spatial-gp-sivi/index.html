@@ -1,0 +1,198 @@
+---
+title: "Semi implicit variational inference for spatial Gaussian process regression"
+author: "Patrick Ding"
+date: "2019-05-12T13:09:13-06:00"
+categories: ["R"]
+tags: ["variational inference", "pytorch", "gaussian process"]
+bibliography: refs.bib
+---
+
+<link href="index_files/anchor-sections/anchor-sections.css" rel="stylesheet" />
+<script src="index_files/anchor-sections/anchor-sections.js"></script>
+
+
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>Variational inference is very popular in machine learning, in our view because
+of its speed and because there is less emphasis on uncertainty quantification in machine learning. One major shortcoming of variational inference methods hampering its adoption in statistics is its tendency to underestimate posterior
+variance. The mean-field assumption for the approximate posterior also fails
+to capture correlations in the posterior. Recent work on expanding the
+variational family seeks to overcome these issues. Here we apply the Semi-Implicit Variational Inference (SIVI) approach of <span class="citation">Yin and Zhou (2018)</span> to a
+spatial Gaussian process regression model. In a simulation study we see that SIVI accurately captures posterior variance and correlation compared to MCMC.</p>
+</div>
+<div id="model" class="section level2">
+<h2>Model</h2>
+<p>The spatial GP model we consider is
+<span class="math display">\[\begin{align*}
+  Y &amp;\sim X\beta + w + \epsilon,
+  \\
+  \beta &amp;\sim N(0, 5 I),
+  \\
+  w &amp;\sim GP(0, \rho(r)),
+  \\
+  \epsilon &amp;\sim N(0, \tau^2 I),
+  \\
+  \rho(r) &amp;= \exp(-r/\phi),
+  \\
+  \phi &amp;\sim U(.01, 10),
+  \\
+  \tau^2 &amp;\sim IG(2, 1).
+\end{align*}\]</span>
+We are using an exponential covariance function. The parameters for which we
+want to infer the posterior are <span class="math inline">\((\beta, \phi, \tau^2)\)</span>.</p>
+<p>We impose the following approximate posterior model <span class="math inline">\(q(\beta, \phi, \tau^2)\)</span>:
+<span class="math display">\[\begin{align*}
+  q(\beta|\mu_\beta, \Sigma_\beta) &amp;\sim MultivariateNormal(\mu_\beta, \Sigma_\beta)
+  \\
+  q(\phi|\mu_\phi, \sigma_\phi) &amp;\sim LogNormal(\mu_\phi, \sigma_\phi)
+  \\
+  q(\tau^2|\mu_{\tau^2}, \sigma_{\tau^2}) &amp;\sim
+    LogNormal(\mu_{\tau^2},\sigma_{\tau^2})
+  \\
+  \psi = (\mu_\beta, \mu_\phi, \mu_{\tau^2}) &amp;\sim q(\psi)
+\end{align*}\]</span>
+where <span class="math inline">\(q(\psi)\)</span> is an implicit distribution. Samples from <span class="math inline">\(q(\psi)\)</span> are
+obtained by passing <span class="math inline">\(N(0, I_{50})\)</span> noise through a 3 layer fully connected
+feed-forward neural network with layer sizes [100, 200, 100] and ReLU
+activations. The conditional approximate distribution variances
+<span class="math inline">\((\Sigma_\beta, \sigma_\phi, \sigma_{\tau^2})\)</span> are variational parameters for
+which we compute point estimates. We choose log normal conditional approximate
+posteriors for the spatial GP variance parameters because we need the
+<span class="math inline">\(q(\cdot|\psi)\)</span> to be reparameterizable. In this case all of these
+distributions can be reparameterized in terms of a shift and scaling. This
+choice allows us to use the reparameterization trick <span class="citation">(Kingma and Welling 2013)</span> when taking Monte Carlo
+estimates of the gradient of the surrogate ELBO.</p>
+</div>
+<div id="simulation-result" class="section level2">
+<h2>Simulation Result</h2>
+<p>For the simulation we generate data from the following settings of the parameters:
+<span class="math display">\[\begin{align*}
+  \tau^2 &amp;= 1,
+  \\
+  \phi &amp;= 5,
+  \\
+  \beta &amp;= (1, -5, 10).
+\end{align*}\]</span>
+We sample 200 locations uniformly from <span class="math inline">\([0, 1] \times [0, 1]\)</span>. For MCMC we run the
+chain for 5000 steps. For SIVI we take 100 gradient updates, 20 outer Monte Carlo samples, and 5 inner Monte Carlo samples. We use the Adam optimizer in Pytorch. Once we have learned the approximate posterior, we draw 5000 samples from it.</p>
+<p><embed src="index_files/figures/mcmc_var_posterior.pdf" style="width:70.0%" /></p>
+<p><embed src="index_files/figures/sivi_var_posterior.pdf" style="width:70.0%" /></p>
+<p>We see that the medians of the posteriors for the variance parameters from both methods are close:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th align="center">MCMC</th>
+<th align="right">SIVI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\tau^2\)</span></td>
+<td align="center">1.119</td>
+<td align="right">1.0351</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\phi\)</span></td>
+<td align="center">1.162</td>
+<td align="right">1.976</td>
+</tr>
+</tbody>
+</table>
+<p>The posterior standard deviation of the variance parameters is larger for SIVI than for MCMC:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th align="center">MCMC</th>
+<th align="right">SIVI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\tau^2\)</span></td>
+<td align="center">0.147</td>
+<td align="right">0.332</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\phi\)</span></td>
+<td align="center">0.743</td>
+<td align="right">2.001</td>
+</tr>
+</tbody>
+</table>
+<p>–</p>
+<p><embed src="index_files/figures/mcmc_beta_posterior.pdf" style="width:70.0%" /></p>
+<p><embed src="index_files/figures/sivi_beta_posterior.pdf" style="width:70.0%" /></p>
+<p>The posterior means of <span class="math inline">\(\beta\)</span> are close for both MCMC and SIVI:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th align="center">MCMC</th>
+<th align="right">SIVI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\beta_0\)</span></td>
+<td align="center">2.035</td>
+<td align="right">0.471</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\beta_1\)</span></td>
+<td align="center">-4.906</td>
+<td align="right">-4.330</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(\beta_2\)</span></td>
+<td align="center">7.920</td>
+<td align="right">9.800</td>
+</tr>
+</tbody>
+</table>
+<p>The posterior variances of <span class="math inline">\(\beta\)</span> from SIVI are of comparable magnitude
+as that from MCMC. SIVI has managed to not underestimate the posterior
+variance:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Parameter</th>
+<th align="center">MCMC</th>
+<th align="right">SIVI</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><span class="math inline">\(\beta_0\)</span></td>
+<td align="center">0.883</td>
+<td align="right">0.770</td>
+</tr>
+<tr class="even">
+<td><span class="math inline">\(\beta_1\)</span></td>
+<td align="center">0.931</td>
+<td align="right">0.922</td>
+</tr>
+<tr class="odd">
+<td><span class="math inline">\(\beta_2\)</span></td>
+<td align="center">0.912</td>
+<td align="right">1.717</td>
+</tr>
+</tbody>
+</table>
+<p>Comparing a scatter plot of <span class="math inline">\(\tau^2\)</span> and <span class="math inline">\(\phi\)</span> samples from MCMC, we see there is some correlation between the two variables in the posterior:</p>
+<p><embed src="index_files/figures/mcmc_corr.pdf" style="width:50.0%" /></p>
+<p>Looking at the scatter plot of samples for the mean parameters for those two variables from the mixing distribution in SIVI, we see that SIVI has managed to capture this same correlation:</p>
+<p><embed src="index_files/figures/sivi_var_corr.pdf" style="width:50.0%" /></p>
+</div>
+<div id="references" class="section level2 unnumbered">
+<h2>References</h2>
+<div id="refs" class="references">
+<div id="ref-kingma_auto-encoding_2013">
+<p>Kingma, Diederik P., and Max Welling. 2013. “Auto-Encoding Variational Bayes.” <em>arXiv:1312.6114 [Cs, Stat]</em>, December. <a href="http://arxiv.org/abs/1312.6114">http://arxiv.org/abs/1312.6114</a>.</p>
+</div>
+<div id="ref-yin_semi-implicit_2018">
+<p>Yin, Mingzhang, and Mingyuan Zhou. 2018. “Semi-Implicit Variational Inference.” In <em>Proceedings of the 35 Th International Conference on Machine Learning</em>, 16. Stockholm, Sweden.</p>
+</div>
+</div>
+</div>
